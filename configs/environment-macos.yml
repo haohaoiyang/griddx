@@ -1,0 +1,24 @@
+name: griddx
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - numpy
+  - pandas
+  - scipy
+  - scikit-learn
+  - matplotlib
+  - seaborn
+  - jupyterlab
+  - ipykernel
+  - tqdm
+  - pyyaml
+  - joblib
+  - pytorch
+  - torchvision
+  - torchaudio
+  - tensorboard
+  - openpyxl
+  - pyarrow
+  - plotly
