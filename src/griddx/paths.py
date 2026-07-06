@@ -6,7 +6,7 @@ from pathlib import Path
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = PACKAGE_ROOT.parents[1]
-DEFAULT_DATA_ROOT = Path(os.getenv("GRIDDX_DATA_ROOT", "/Users/joyhanzhu/Desktop/南网"))
+DEFAULT_DATA_ROOT = Path(os.getenv("GRIDDX_DATA_ROOT", PROJECT_ROOT / "data"))
 OUTPUT_ROOT = PROJECT_ROOT / "outputs" / "baseline_models"
 
 

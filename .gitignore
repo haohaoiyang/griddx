@@ -4,6 +4,7 @@ __pycache__/
 .cache/
 .ipynb_checkpoints/
 outputs/
+data/
 *.log
 *.tmp
 .env
