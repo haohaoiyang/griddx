@@ -34,6 +34,23 @@ ID_COLUMNS = {
     "station_name",
 }
 
+CATEGORICAL_COLUMNS = [
+    "suggested_model_group",
+    "station_id",
+    "device_type_code",
+    "manufacturer_code",
+    "history_defect_type_code",
+    "history_defect_reason_code",
+    "history_trip_type_code",
+    "history_trip_reason_code",
+    "maintenance_relation_code",
+    "family_history_defect_type_code",
+    "family_history_defect_reason_code",
+    "family_history_trip_type_code",
+    "family_history_trip_reason_code",
+    "station_type_code",
+]
+
 
 def _existing(df: pd.DataFrame, columns: list[str]) -> list[str]:
     return [col for col in columns if col in df.columns]
@@ -106,12 +123,67 @@ def add_station_peer_features(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def add_enriched_device_features(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    if {"history_defect_count", "defect_related_maintenance_count"}.issubset(out.columns):
+        defects = out["history_defect_count"].clip(lower=0)
+        repaired = out["defect_related_maintenance_count"].clip(lower=0)
+        out["unresolved_defect_count"] = (defects - repaired).clip(lower=0)
+        out["defect_resolution_rate"] = np.where(defects > 0, repaired / defects, 1.0)
+    if {"history_trip_count", "trip_related_maintenance_count"}.issubset(out.columns):
+        trips = out["history_trip_count"].clip(lower=0)
+        repaired = out["trip_related_maintenance_count"].clip(lower=0)
+        out["unresolved_trip_count"] = (trips - repaired).clip(lower=0)
+        out["trip_resolution_rate"] = np.where(trips > 0, repaired / trips, 1.0)
+    if {"history_defect_count", "history_trip_count"}.issubset(out.columns):
+        out["history_event_count"] = out["history_defect_count"].clip(lower=0) + out["history_trip_count"].clip(lower=0)
+        out["history_event_count_log1p"] = np.log1p(out["history_event_count"])
+    if {"history_defect_count", "history_defect_level_code"}.issubset(out.columns):
+        out["history_defect_burden"] = out["history_defect_count"].clip(lower=0) * out[
+            "history_defect_level_code"
+        ].clip(lower=0)
+    if {"history_trip_count", "history_trip_level_code"}.issubset(out.columns):
+        out["history_trip_burden"] = out["history_trip_count"].clip(lower=0) * out[
+            "history_trip_level_code"
+        ].clip(lower=0)
+    family_cols = {"family_history_defect_count", "family_history_trip_count", "family_device_count"}
+    if family_cols.issubset(out.columns):
+        family_events = out["family_history_defect_count"].clip(lower=0) + out["family_history_trip_count"].clip(lower=0)
+        out["family_event_count_per_device"] = family_events / out["family_device_count"].replace(0, np.nan)
+    if "device_age_days" in out.columns:
+        out["device_age_years"] = out["device_age_days"].clip(lower=0) / 365.25
+    return out
+
+
+def add_enriched_station_features(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    if {"history_defect_count", "history_trip_count"}.issubset(out.columns):
+        out["history_event_count"] = out["history_defect_count"].clip(lower=0) + out["history_trip_count"].clip(lower=0)
+        out["history_event_count_log1p"] = np.log1p(out["history_event_count"])
+    if {"history_event_count", "history_maintenance_count"}.issubset(out.columns):
+        maintenance = out["history_maintenance_count"].clip(lower=0)
+        out["unresolved_event_count_proxy"] = (out["history_event_count"] - maintenance).clip(lower=0)
+        out["maintenance_coverage_proxy"] = np.where(
+            out["history_event_count"] > 0,
+            np.minimum(maintenance / out["history_event_count"], 1.0),
+            1.0,
+        )
+    if {"history_event_count", "main_transformer_count"}.issubset(out.columns):
+        out["history_events_per_transformer"] = out["history_event_count"] / out["main_transformer_count"].replace(0, np.nan)
+    if {"lightning_risk_level_code", "ice_area_level_code"}.issubset(out.columns):
+        out["environment_risk_level"] = out[["lightning_risk_level_code", "ice_area_level_code"]].max(axis=1)
+    if {"active_power_abs", "main_transformer_capacity_mva"}.issubset(out.columns):
+        out["capacity_loading_proxy"] = out["active_power_abs"] / out["main_transformer_capacity_mva"].replace(0, np.nan)
+    return out
+
+
 def build_device_features(df: pd.DataFrame) -> pd.DataFrame:
     out = drop_empty_columns(df)
     out = add_calendar_features(out)
     out = add_physical_features(out)
     out = add_device_temporal_features(out)
     out = add_station_peer_features(out)
+    out = add_enriched_device_features(out)
     return out
 
 
@@ -135,17 +207,24 @@ def build_station_features(df: pd.DataFrame) -> pd.DataFrame:
         for col in _existing(out, ["active_power_abs", "current_3phase_mean", "voltage_mean", "switch_action_rate"]):
             out[f"{col}_roll7_mean"] = grouped[col].rolling(window=7, min_periods=2).mean().reset_index(level=0, drop=True)
             out[f"{col}_diff_1d"] = grouped[col].diff()
-    return out
+    return add_enriched_station_features(out)
 
 
 def modeling_columns(df: pd.DataFrame, target_col: str, extra_exclude: set[str] | None = None) -> tuple[list[str], list[str]]:
     exclude = set(ID_COLUMNS) | {target_col, "state_score", "state_label", "risk_score", "risk_level"}
     if extra_exclude:
         exclude |= extra_exclude
-    categorical = [col for col in ["suggested_model_group", "station_id"] if col in df.columns and col not in exclude]
+    categorical = [
+        col
+        for col in CATEGORICAL_COLUMNS
+        if col in df.columns and col not in exclude and df[col].nunique(dropna=True) > 1
+    ]
     numeric = [
         col
         for col in df.select_dtypes(include="number").columns
-        if col not in exclude and df[col].replace([np.inf, -np.inf], np.nan).notna().any()
+        if col not in exclude
+        and col not in categorical
+        and df[col].replace([np.inf, -np.inf], np.nan).notna().any()
+        and df[col].nunique(dropna=True) > 1
     ]
     return numeric, categorical

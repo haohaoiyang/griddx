@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -42,8 +43,8 @@ def save_eval_artifacts(
     name: str,
     y_true: np.ndarray,
     y_pred: np.ndarray,
-    extra_metrics: dict[str, float] | None = None,
-) -> dict[str, float]:
+    extra_metrics: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     metrics = evaluate_classification(y_true, y_pred)
     if extra_metrics:

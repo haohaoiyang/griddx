@@ -8,7 +8,7 @@ import pandas as pd
 from scipy.optimize import linprog
 
 from .features import build_station_features
-from .labels import make_station_cold_start_labels
+from .labels import has_station_enriched_fields, make_station_cold_start_labels, make_station_enriched_weak_labels
 from .paths import data_path, ensure_output_dir
 
 
@@ -30,7 +30,11 @@ def prepare_dispatch_table(station_csv: Path, date: str | None = None) -> pd.Dat
     day = df[df["date"] == selected_date].copy()
     if day.empty:
         raise ValueError(f"No station rows found for date={selected_date.date()}")
-    features = make_station_cold_start_labels(build_station_features(day))
+    features = build_station_features(day)
+    if has_station_enriched_fields(features):
+        features = make_station_enriched_weak_labels(features)
+    else:
+        features = make_station_cold_start_labels(features)
 
     active = features.get("active_power_3phase_sum", pd.Series(0.0, index=features.index)).abs().fillna(0)
     historical = df.copy()
@@ -40,8 +44,14 @@ def prepare_dispatch_table(station_csv: Path, date: str | None = None) -> pd.Dat
     features["capacity_mw_proxy"] = features["station_id"].map(p95).fillna(active.quantile(0.95)).clip(lower=1.0) * 1.25
     features["forecast_demand_mw"] = (active * 1.08).clip(lower=0.1)
 
-    risk = features["state_score"].fillna(50) / 100.0
-    features["risk_penalty"] = 0.15 + 0.85 * risk
+    state_risk = features["state_score"].fillna(50) / 100.0
+    history_risk = features.get("history_event_count", pd.Series(0.0, index=features.index)).rank(pct=True).fillna(0.5)
+    maintenance_gap_risk = features.get(
+        "unresolved_event_count_proxy", pd.Series(0.0, index=features.index)
+    ).rank(pct=True).fillna(0.5)
+    combined_risk = 0.55 * state_risk + 0.25 * history_risk + 0.20 * maintenance_gap_risk
+    features["risk_penalty"] = 0.15 + 0.85 * combined_risk
+    features["maintenance_availability_factor"] = (1.0 - 0.35 * maintenance_gap_risk).clip(0.65, 1.0)
     features["state_name"] = features["state_label"].map(STATE_LABELS)
     derate = np.select(
         [features["state_label"] == 0, features["state_label"] == 1, features["state_label"] == 2, features["state_label"] >= 3],
@@ -49,7 +59,9 @@ def prepare_dispatch_table(station_csv: Path, date: str | None = None) -> pd.Dat
         default=0.75,
     )
     available = (features["capacity_mw_proxy"] * derate - features["current_load_mw_proxy"]).clip(lower=0)
-    features["max_adjustable_mw"] = np.minimum(features["forecast_demand_mw"], available)
+    features["max_adjustable_mw"] = np.minimum(features["forecast_demand_mw"], available) * features[
+        "maintenance_availability_factor"
+    ]
 
     load_rank = features["forecast_demand_mw"].rank(pct=True).fillna(0.5)
     coverage = features.get("operation_coverage_rate", pd.Series(1.0, index=features.index)).fillna(1.0).clip(0, 1)
@@ -120,6 +132,7 @@ def run_dispatch(station_csv: Path, date: str | None = None, supply_budget_mw: f
         "max_adjustable_mw",
         "unit_benefit",
         "risk_penalty",
+        "maintenance_availability_factor",
         "net_value",
         "recommended_allocation_mw",
         "dispatch_priority",
