@@ -130,7 +130,7 @@ def run_device_training(
         "numeric_feature_count": len(numeric),
         "categorical_feature_count": len(categorical),
         "class_counts": {str(key): int(value) for key, value in table["state_label"].value_counts().sort_index().items()},
-        "personalized_model": "DeviceAdaptiveMultiDiscriminator" if train_multi_discriminator else None,
+        "personalized_model": "DAMD-Net" if train_multi_discriminator else None,
         "device_profile_output": "device_expert_profiles.csv" if train_multi_discriminator else None,
     }
     (output_dir / "training_run_metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")

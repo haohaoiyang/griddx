@@ -23,6 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--skip-station", action="store_true")
     parser.add_argument("--skip-dispatch", action="store_true")
     parser.add_argument("--skip-multi-discriminator", action="store_true")
+    parser.add_argument("--skip-station-hierarchical", action="store_true")
     parser.add_argument("--device-csv", type=Path, default=data_path("model_base_device_day_line_or_load_like_enriched.csv"))
     parser.add_argument("--station-csv", type=Path, default=data_path("model_base_station_day_extract_enriched.csv"))
     parser.add_argument("--device-max-rows", type=int, default=120_000)
@@ -81,6 +82,7 @@ def main() -> None:
             target_col=args.station_target_col,
             label_mode=args.label_mode,
             split_strategy=args.split_strategy,
+            train_hierarchical=not args.skip_station_hierarchical,
         )
     if not args.skip_dispatch:
         print("\n=== Economic dispatch plan ===")

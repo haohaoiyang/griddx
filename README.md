@@ -4,6 +4,29 @@
 
 > enriched 表中的历史事件和台账字段是按设备或站点生成的静态画像，同一对象在 90 天内保持不变，且部分字段来自随机编码。当前默认采用“enriched 弱监督风险评分 + 分组切分 + 多模型对比”，用于状态评估规则验证，不等同于未来真实故障预测。
 
+## 当前三层建模方案
+
+项目目前形成设备、站点、经济调度三层模型：
+
+| 层级 | 技术名称 | 解决的问题 | 主要输出 |
+| --- | --- | --- | --- |
+| 设备 | DAMD-Net 设备自适应多判别器网络 | 表达每台设备在运行、历史、检修和家族画像上的差异 | 四级状态、设备风险概率、四判别器权重 |
+| 站点 | HSF-Net 站点分层多视角融合网络 | 融合站点运行、历史检修和基础设施风险 | 四级状态、连续风险分、三视图权重 |
+| 经济 | RA-MOD 风险约束多目标调度模型 | 在调电成本、风险成本和供电缺额损失之间优化 | 站点调电量、缺额量、成本分解和优先级 |
+
+```text
+单设备日级数据
+-> DAMD-Net 设备差异化状态识别
+-> HSF-Net 站点多视角风险评估
+-> RA-MOD 风险约束经济调度
+```
+
+三份详细技术文档：
+
+- [DAMD-Net 设备自适应多判别器网络](docs/device_personalized_multi_discriminator.md)
+- [HSF-Net 站点分层多视角状态融合网络](docs/station_hierarchical_fusion_model.md)
+- [RA-MOD 风险约束多目标经济调度模型](docs/risk_aware_economic_dispatch_model.md)
+
 ## 目录结构
 
 ```text
@@ -22,7 +45,9 @@ griddx/
 ├── docs/                             # 更详细的建模说明文档
 │   ├── baseline_modeling_report.md
 │   ├── enriched_modeling_report.md   # 新数据分析、改进方案和结果边界
-│   └── device_personalized_multi_discriminator.md # 设备个性化多判别器说明
+│   ├── device_personalized_multi_discriminator.md # DAMD-Net 设备模型
+│   ├── station_hierarchical_fusion_model.md        # HSF-Net 站点模型
+│   └── risk_aware_economic_dispatch_model.md       # RA-MOD 经济模型
 ├── examples/                         # 示例脚本和早期环境验证脚本
 │   ├── grid_fault_demo.py
 │   └── test.py
@@ -36,6 +61,7 @@ griddx/
 │   ├── model_zoo.py                  # 机器学习、MLP 和设备个性化多判别器
 │   ├── device_prediction.py          # 设备级状态预测训练入口
 │   ├── station_assessment.py         # 站点级状态评估训练入口
+│   ├── station_fusion.py             # HSF-Net 网络、双任务训练和站点画像
 │   ├── economic_dispatch.py          # 经济调电优化模型
 │   ├── evaluation.py                 # 指标评估、混淆矩阵和报告输出
 │   └── paths.py                      # 项目路径和数据路径配置
@@ -194,7 +220,8 @@ PYTHONPATH=src python -m griddx.economic_dispatch
 | 模型 | 代码名 | 结构 |
 | --- | --- | --- |
 | 多层感知机 | `torch_mlp` | Linear -> ReLU -> Dropout -> Linear -> ReLU -> Dropout -> Linear |
-| 设备个性化多判别器 | `torch_multi_discriminator` | 四视角判别器 + 设备自适应门控 + 加权融合 |
+| DAMD-Net | `torch_multi_discriminator` | 四视角 MLP 判别器 + 设备自适应门控 + 加权融合 |
+| HSF-Net | `torch_station_hierarchical` | 三视角编码器 + 门控融合 + 状态分类和风险回归双任务 |
 
 神经网络使用 `CrossEntropyLoss(class_weight)` 处理类别不均衡，优化器为 `AdamW`。代码支持 macOS MPS、Linux CUDA 和 CPU。
 
@@ -228,6 +255,7 @@ python scripts/run_baseline_pipeline.py \
 | 模型 | Accuracy | Macro-F1 | QWK | 高风险召回 |
 | --- | ---: | ---: | ---: | ---: |
 | `torch_mlp` | 0.8662 | 0.5486 | 0.8039 | 0.7429 |
+| `torch_station_hierarchical` | 0.8422 | 0.4773 | 0.6818 | 0.5143 |
 | `hist_gradient_boosting` | 0.8547 | 0.4959 | 0.7379 | 0.4857 |
 | `extra_trees` | 0.8614 | 0.4898 | 0.7751 | 0.6571 |
 | `random_forest` | 0.8547 | 0.4477 | 0.7603 | 0.4286 |
@@ -237,37 +265,36 @@ python scripts/run_baseline_pipeline.py \
 
 这些指标衡量的是模型复现弱监督风险规则的能力，不是未来缺陷或跳闸的业务命中率。
 
-## 经济调电模型
+## RA-MOD 经济调度模型
 
-经济调电模块当前使用线性规划建模，目标是：
+RA-MOD 使用 HiGHS 线性规划求解器，联合最小化：
 
 ```text
-最大化 供电收益 - 运行风险惩罚
+调电执行成本 + 风险暴露成本 + 供电缺额损失
 ```
 
 主要输入：
 
-- 站点状态等级
-- 站点状态风险分
-- 历史缺陷、跳闸和未处理事件代理值
-- 检修可用系数
-- 当前负荷代理值
-- 容量代理值
-- 可调负荷代理值
-- 运行覆盖率和开关动作率等收益侧代理特征
+- 站点状态风险、历史事件、未处理检修和环境风险。
+- 当前负荷、预测负荷和风险调整容量。
+- 电压等级、负荷水平和主变数量形成的站点重要度。
+- 调电单位成本、风险单位成本和供电缺额单位损失。
 
 主要约束：
 
-- 总供电预算约束
-- 单站点可调容量约束
-- 高风险站点降额约束
-- 异常站点不鼓励新增承载压力
+- 总增量调电预算约束。
+- 单站点风险调整容量约束。
+- 调电量与未满足需求的平衡约束。
+- 高风险和检修未闭环站点降额约束。
 
 输出文件：
 
 ```text
 outputs/baseline_models/economic_dispatch/dispatch_plan.csv
+outputs/baseline_models/economic_dispatch/dispatch_summary.json
 ```
+
+当前 77 个站点实验中，增量预算为 258.238 MW，总增量需求为 673.135 MW，求解器状态为 `optimal`。这些数值仍基于代理经济参数，等待经济调研数据替换。
 
 ## 后续开发建议
 

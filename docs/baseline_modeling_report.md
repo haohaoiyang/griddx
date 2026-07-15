@@ -14,9 +14,9 @@ Enriched CSV
 -> 量测、时序、历史事件和检修特征
 -> Enriched 弱监督四级状态标签
 -> 按设备或站点分组切分
--> 传统机器学习、PyTorch MLP 与设备个性化多判别器对比
--> 站点风险和检修可用系数
--> 经济调电线性规划
+-> DAMD-Net 设备个性化多判别器
+-> HSF-Net 站点分层融合与连续风险评分
+-> RA-MOD 风险约束多目标经济调度
 ```
 
 ## 模型清单
@@ -28,7 +28,9 @@ Enriched CSV
 | `extra_trees` | 随机树模型 | 树模型稳定性对照 |
 | `hist_gradient_boosting` | Boosting 树模型 | 表格模型基线 |
 | `torch_mlp` | PyTorch 神经网络 | 通用 CPU、MPS、CUDA 深度学习基线 |
-| `torch_multi_discriminator` | PyTorch 多判别器 | 为每台设备生成个性化专家权重和风险路径 |
+| `torch_multi_discriminator` | DAMD-Net | 为每台设备生成个性化判别器权重和风险路径 |
+| `torch_station_hierarchical` | HSF-Net | 联合输出站点状态、风险分和三视图权重 |
+| `RA-MOD` | 线性规划 | 联合优化调电成本、风险成本与供电缺额损失 |
 
 ## PyTorch 设备选择
 

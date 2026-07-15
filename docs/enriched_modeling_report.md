@@ -113,12 +113,15 @@ python scripts/run_baseline_pipeline.py \
 | 模型 | Accuracy | Macro-F1 | QWK | 高风险召回 |
 | --- | ---: | ---: | ---: | ---: |
 | PyTorch MLP | 0.8662 | 0.5486 | 0.8039 | 0.7429 |
+| HSF-Net | 0.8422 | 0.4773 | 0.6818 | 0.5143 |
 | HistGradientBoosting | 0.8547 | 0.4959 | 0.7379 | 0.4857 |
 | Extra Trees | 0.8614 | 0.4898 | 0.7751 | 0.6571 |
 | Random Forest | 0.8547 | 0.4477 | 0.7603 | 0.4286 |
 | Logistic Regression | 0.8056 | 0.3260 | 0.4642 | 0.0000 |
 
 站点样本只有 77 个独立对象，测试集仅 20 个站点，结果波动会比较大。后续不能只增加站点日行数，还需要增加独立站点数量和真实事件样本。
+
+HSF-Net 同时输出站点连续风险分和运行、历史检修、基础设施三视图权重。完整结构见 [station_hierarchical_fusion_model.md](station_hierarchical_fusion_model.md)。
 
 ### 6.1 设备个性化多判别器
 
@@ -135,13 +138,15 @@ python scripts/run_baseline_pipeline.py \
 - 检修可用系数。
 - 高风险状态降额。
 
-当前优化目标仍为代理经济目标：
+当前 RA-MOD 优化目标为：
 
 ```text
-最大化：供电收益代理 - 运行风险惩罚
+最小化：调电执行成本 + 风险暴露成本 + 供电缺额损失
 ```
 
 由于还没有节点电价、发电成本、网损、潮流约束、线路热稳限额和真实停电损失，当前结果只能作为调电优先级原型，不能直接下发生产调度指令。
+
+完整决策变量、目标函数和约束见 [risk_aware_economic_dispatch_model.md](risk_aware_economic_dispatch_model.md)。
 
 ## 8. 下一阶段真实预测标签
 

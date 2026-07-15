@@ -7,15 +7,57 @@ import pandas as pd
 import torch
 
 from griddx.features import add_enriched_device_features, add_enriched_station_features, modeling_columns
+from griddx.economic_dispatch import solve_dispatch
 from griddx.labels import make_device_enriched_weak_labels, make_station_enriched_weak_labels
 from griddx.model_zoo import (
     DeviceAdaptiveMultiDiscriminator,
     build_discriminator_feature_groups,
     make_train_test_indices,
 )
+from griddx.station_fusion import StationHierarchicalFusionNetwork, build_station_feature_views
 
 
 class EnrichedPipelineTest(unittest.TestCase):
+    def test_risk_aware_dispatch_respects_budget_and_balance(self) -> None:
+        table = pd.DataFrame(
+            {
+                "required_adjustment_mw": [10.0, 8.0, 6.0],
+                "max_adjustable_mw": [10.0, 8.0, 3.0],
+                "dispatch_cost_per_mw": [0.4, 0.5, 0.5],
+                "risk_cost_per_mw": [0.2, 0.8, 1.4],
+                "shortfall_cost_per_mw": [2.5, 2.0, 1.8],
+                "marginal_net_value": [1.9, 0.7, -0.1],
+                "state_label": [0, 1, 3],
+            }
+        )
+        result = solve_dispatch(table, supply_budget_mw=12.0)
+        self.assertLessEqual(result["recommended_allocation_mw"].sum(), 12.0 + 1e-6)
+        balance = result["recommended_allocation_mw"] + result["unserved_adjustment_mw"]
+        self.assertTrue((balance + 1e-6 >= result["required_adjustment_mw"]).all())
+        self.assertTrue((result["total_objective_cost"] >= 0).all())
+        self.assertTrue((result["solver_status"] == "optimal").all())
+
+    def test_station_hierarchical_fusion_outputs_two_tasks(self) -> None:
+        feature_names = [
+            "voltage_mean",
+            "history_defect_count",
+            "maintenance_coverage_proxy",
+            "main_transformer_count",
+            "lightning_risk_level_code",
+        ]
+        views = build_station_feature_views(feature_names)
+        self.assertEqual(set(views), {"operation", "history_maintenance", "infrastructure"})
+        model = StationHierarchicalFusionNetwork(
+            n_features=len(feature_names),
+            n_classes=4,
+            feature_views=views,
+        )
+        logits, risk, weights = model(torch.randn(5, len(feature_names)))
+        self.assertEqual(tuple(logits.shape), (5, 4))
+        self.assertEqual(tuple(risk.shape), (5,))
+        self.assertEqual(tuple(weights.shape), (5, 3))
+        self.assertTrue(torch.allclose(weights.sum(dim=1), torch.ones(5), atol=1e-6))
+
     def test_multi_discriminator_has_personalized_gate(self) -> None:
         feature_names = [
             "current_3phase",

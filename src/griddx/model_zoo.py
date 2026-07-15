@@ -660,6 +660,7 @@ def train_torch_multi_discriminator(
     artifact_path = output_dir / "torch_multi_discriminator.pt"
     torch.save(
         {
+            "model_name": "DAMD-Net",
             "model_class": "DeviceAdaptiveMultiDiscriminator",
             "model_state_dict": model.cpu().state_dict(),
             "preprocessor": preprocessor,

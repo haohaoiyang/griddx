@@ -11,6 +11,7 @@ from .features import build_station_features, modeling_columns
 from .labels import has_station_enriched_fields, make_station_cold_start_labels, make_station_enriched_weak_labels
 from .model_zoo import save_metrics_summary, train_sklearn_models, train_torch_mlp
 from .paths import data_path, ensure_output_dir
+from .station_fusion import train_station_hierarchical_fusion
 
 
 def build_station_training_table(
@@ -51,6 +52,7 @@ def run_station_training(
     target_col: str | None = None,
     label_mode: str = "auto",
     split_strategy: str = "group",
+    train_hierarchical: bool = True,
 ) -> pd.DataFrame:
     output_dir = ensure_output_dir("station_assessment")
     table = build_station_training_table(
@@ -90,6 +92,22 @@ def run_station_training(
                 group_col="station_id" if split_strategy == "group" else None,
             )
         )
+    if train_hierarchical:
+        results.append(
+            train_station_hierarchical_fusion(
+                table,
+                "state_label",
+                numeric,
+                categorical,
+                output_dir,
+                epochs=mlp_epochs,
+                batch_size=batch_size,
+                torch_device=torch_device,
+                gpu_id=gpu_id,
+                split_strategy=split_strategy,
+                group_col="station_id" if split_strategy == "group" else None,
+            )
+        )
     metadata = {
         "csv": csv_path.name,
         "rows": len(table),
@@ -99,6 +117,8 @@ def run_station_training(
         "numeric_feature_count": len(numeric),
         "categorical_feature_count": len(categorical),
         "class_counts": {str(key): int(value) for key, value in table["state_label"].value_counts().sort_index().items()},
+        "hierarchical_model": "HSF-Net" if train_hierarchical else None,
+        "station_profile_output": "station_hierarchical_profiles.csv" if train_hierarchical else None,
     }
     (output_dir / "training_run_metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
     summary = save_metrics_summary(results, output_dir)
@@ -112,6 +132,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-rows", type=int, default=0, help="Use <=0 to read the full CSV.")
     parser.add_argument("--models", default="logistic_regression,random_forest,extra_trees,hist_gradient_boosting")
     parser.add_argument("--no-mlp", action="store_true")
+    parser.add_argument("--no-hierarchical", action="store_true")
     parser.add_argument("--mlp-epochs", type=int, default=18)
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--torch-device", default="auto", help="auto, cpu, cuda, cuda:<id>, or mps.")
@@ -137,6 +158,7 @@ def main() -> None:
         target_col=args.target_col,
         label_mode=args.label_mode,
         split_strategy=args.split_strategy,
+        train_hierarchical=not args.no_hierarchical,
     )
 
 
