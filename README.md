@@ -21,11 +21,12 @@
 -> RA-MOD 风险约束经济调度
 ```
 
-三份详细技术文档：
+详细技术文档：
 
 - [DAMD-Net 设备自适应多判别器网络](docs/device_personalized_multi_discriminator.md)
 - [HSF-Net 站点分层多视角状态融合网络](docs/station_hierarchical_fusion_model.md)
 - [RA-MOD 风险约束多目标经济调度模型](docs/risk_aware_economic_dispatch_model.md)
+- [设备模型 real 数据验证报告](docs/device_model_real_data_validation_report.md)
 
 ## 目录结构
 
@@ -40,6 +41,7 @@ griddx/
 │   ├── model_base_device_day.csv
 │   ├── model_base_device_day_line_or_load_like.csv
 │   ├── model_base_device_day_line_or_load_like_enriched.csv
+│   ├── model_base_device_day_line_or_load_like_real.csv
 │   ├── model_base_station_day.csv
 │   └── model_base_station_day_extract_enriched.csv
 ├── docs/                             # 更详细的建模说明文档
@@ -47,12 +49,14 @@ griddx/
 │   ├── enriched_modeling_report.md   # 新数据分析、改进方案和结果边界
 │   ├── device_personalized_multi_discriminator.md # DAMD-Net 设备模型
 │   ├── station_hierarchical_fusion_model.md        # HSF-Net 站点模型
-│   └── risk_aware_economic_dispatch_model.md       # RA-MOD 经济模型
+│   ├── risk_aware_economic_dispatch_model.md       # RA-MOD 经济模型
+│   └── device_model_real_data_validation_report.md # real 数据验证报告
 ├── examples/                         # 示例脚本和早期环境验证脚本
 │   ├── grid_fault_demo.py
 │   └── test.py
 ├── scripts/                          # 命令行入口脚本
-│   └── run_baseline_pipeline.py      # 一键运行设备模型、站点模型和经济调电
+│   ├── run_baseline_pipeline.py      # 一键运行设备模型、站点模型和经济调电
+│   └── validate_external_device_data.py # 验证已保存设备模型
 ├── src/griddx/                       # Python 源码包
 │   ├── __init__.py                   # 包初始化文件
 │   ├── data.py                       # CSV 读取、日期解析、空列处理
@@ -64,9 +68,11 @@ griddx/
 │   ├── station_fusion.py             # HSF-Net 网络、双任务训练和站点画像
 │   ├── economic_dispatch.py          # 经济调电优化模型
 │   ├── evaluation.py                 # 指标评估、混淆矩阵和报告输出
+│   ├── external_validation.py        # real 数据验证、漂移检查和结果汇总
 │   └── paths.py                      # 项目路径和数据路径配置
 ├── tests/                             # 数据特征、标签和切分测试
-│   └── test_enriched_pipeline.py
+│   ├── test_enriched_pipeline.py
+│   └── test_external_validation.py
 └── outputs/                          # 本地实验输出目录，不上传 Git
     ├── baseline_models/              # baseline 模型、指标和调电结果
     └── demo/                         # 早期 demo 输出
@@ -101,6 +107,7 @@ data/
 ├── model_base_device_day.csv
 ├── model_base_device_day_line_or_load_like.csv
 ├── model_base_device_day_line_or_load_like_enriched.csv
+├── model_base_device_day_line_or_load_like_real.csv
 ├── model_base_station_day.csv
 └── model_base_station_day_extract_enriched.csv
 ```
@@ -203,6 +210,33 @@ PYTHONPATH=src python -m griddx.station_assessment \
 ```bash
 PYTHONPATH=src python -m griddx.economic_dispatch
 ```
+
+## real 数据模型验证
+
+最新 real 设备日表已用于验证保存的六个设备模型。主验证限定为训练时 group split 保存的 1,433 台测试设备，共 115,560 条可评分记录。
+
+| 模型 | Macro-F1 | QWK | 风险精确率 | 风险召回率 |
+| --- | ---: | ---: | ---: | ---: |
+| `torch_multi_discriminator` | **0.3812** | **0.5801** | 0.9931 | 0.3033 |
+| `torch_mlp` | 0.3664 | 0.5116 | 0.9928 | 0.1867 |
+| `logistic_regression` | 0.2841 | 0.3631 | 0.1868 | **0.8741** |
+| `random_forest` | 0.2663 | 0.3421 | 1.0000 | 0.1817 |
+| `extra_trees` | 0.2620 | 0.3257 | 1.0000 | 0.1651 |
+| `hist_gradient_boosting` | 0.2313 | 0.3023 | 1.0000 | 0.1246 |
+
+DAMD-Net 的代理标签综合效果最好，但 real 表没有未来真实故障标签，且与 enriched 源表的设备和日期面板完全重叠。以上结果只能说明真实画像替换后的弱监督一致性，不能表述为真实故障预测准确率。完整边界、混淆矩阵、设备判别器差异及数据漂移见 [real 数据验证报告](docs/device_model_real_data_validation_report.md)。
+
+复现验证：
+
+```bash
+python scripts/validate_external_device_data.py \
+  --csv data/model_base_device_day_line_or_load_like_real.csv \
+  --reference-csv data/model_base_device_day_line_or_load_like_enriched.csv \
+  --device-partition test \
+  --torch-device auto
+```
+
+验证脚本会输出六模型指标、四级混淆矩阵、类别未见率、数值 PSI 和每台设备的 DAMD-Net 判别器权重。结果保存在 `outputs/baseline_models/external_validation/`，不会上传 Git。
 
 ## 当前使用的模型
 
