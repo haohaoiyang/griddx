@@ -1,0 +1,7 @@
+{
+  "request_id": "demo-cleaning-001",
+  "batch_id": "demo-raw-20260201",
+  "business_date": "2026-02-05",
+  "run_mode": "operation_only",
+  "force": false
+}

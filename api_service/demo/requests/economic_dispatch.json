@@ -1,0 +1,15 @@
+{
+  "request_id": "demo-dispatch-001",
+  "assessment_date": "2026-02-07",
+  "station_ids": ["SS-AFZ", "SS-BAZ"],
+  "supply_budget_mw": 10.0,
+  "economic_parameters": {
+    "load_growth_rate": 0.08,
+    "capacity_multiplier": 1.25,
+    "dispatch_cost_base": 0.30,
+    "risk_cost_base": 0.20,
+    "risk_cost_weight": 1.10,
+    "shortfall_cost_base": 1.25,
+    "shortfall_criticality_weight": 1.75
+  }
+}

@@ -1,0 +1,9 @@
+.git
+.DS_Store
+data
+outputs
+api_service/runtime
+api_service/.env
+**/__pycache__
+**/*.pyc
+**/.pytest_cache

@@ -1,0 +1,10 @@
+{
+  "device_damd_net.pt": {
+    "model_name": "DAMD-Net",
+    "sha256": "9e1e625b5935fc56854bb173410d616f7383f5460b8cef964d13532efc35fb49"
+  },
+  "station_hsf_net.pt": {
+    "model_name": "HSF-Net",
+    "sha256": "56be09ba8581aeb5030aa005fef86c144528eb00c90c4dad0a37f5f79d19501d"
+  }
+}

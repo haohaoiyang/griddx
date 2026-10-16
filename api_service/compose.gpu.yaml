@@ -1,0 +1,23 @@
+services:
+  model-api:
+    platform: ${GPU_PLATFORM:-linux/amd64}
+    build:
+      args:
+        PYTORCH_VERSION: ${PYTORCH_VERSION:-2.11.0}
+        PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cu128}
+    image: power-grid-model-api:${IMAGE_TAG:-1.0.0-cu128}
+    environment:
+      TORCH_DEVICE: cuda
+      # A single selected host GPU is exposed as cuda:0 inside the container.
+      GPU_ID: 0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${NVIDIA_GPU_ID:-0}"]
+              capabilities: [gpu]
+
+  data-worker:
+    platform: ${GPU_PLATFORM:-linux/amd64}
+    image: power-grid-model-api:${IMAGE_TAG:-1.0.0-cu128}

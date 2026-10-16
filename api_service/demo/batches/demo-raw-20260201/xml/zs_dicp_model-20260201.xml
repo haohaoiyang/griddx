@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF
+  xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+  xmlns:cim="http://iec.ch/TC57/2003/CIM-schema-cim10#">
+  <cim:Substation rdf:ID="SS-DEMO">
+    <cim:IdentifiedObject.name>示例站</cim:IdentifiedObject.name>
+  </cim:Substation>
+  <cim:VoltageLevel rdf:ID="VL-DEMO">
+    <cim:IdentifiedObject.name>Demo 110kV</cim:IdentifiedObject.name>
+    <cim:VoltageLevel.MemberOf_Substation rdf:resource="#SS-DEMO"/>
+  </cim:VoltageLevel>
+  <cim:ACLineSegment rdf:ID="DEV-LINE-1">
+    <cim:IdentifiedObject.name>Demo Line 1</cim:IdentifiedObject.name>
+    <cim:Equipment.MemberOf_EquipmentContainer rdf:resource="#VL-DEMO"/>
+  </cim:ACLineSegment>
+  <cim:ACLineSegment rdf:ID="DEV-LINE-2">
+    <cim:IdentifiedObject.name>Demo Line 2</cim:IdentifiedObject.name>
+    <cim:Equipment.MemberOf_EquipmentContainer rdf:resource="#VL-DEMO"/>
+  </cim:ACLineSegment>
+  <cim:MeasurementType rdf:ID="MT-I">
+    <cim:IdentifiedObject.name>ThreePhaseCurrent</cim:IdentifiedObject.name>
+  </cim:MeasurementType>
+  <cim:MeasurementType rdf:ID="MT-V">
+    <cim:IdentifiedObject.name>Voltage</cim:IdentifiedObject.name>
+  </cim:MeasurementType>
+  <cim:MeasurementType rdf:ID="MT-P">
+    <cim:IdentifiedObject.name>ThreePhaseActivePower</cim:IdentifiedObject.name>
+  </cim:MeasurementType>
+  <cim:MeasurementType rdf:ID="MT-Q">
+    <cim:IdentifiedObject.name>ThreePhaseReactivePower</cim:IdentifiedObject.name>
+  </cim:MeasurementType>
+  <cim:Unit rdf:ID="UNIT-A"><cim:IdentifiedObject.name>AMP</cim:IdentifiedObject.name></cim:Unit>
+  <cim:Unit rdf:ID="UNIT-KV"><cim:IdentifiedObject.name>kV</cim:IdentifiedObject.name></cim:Unit>
+  <cim:Unit rdf:ID="UNIT-MW"><cim:IdentifiedObject.name>MW</cim:IdentifiedObject.name></cim:Unit>
+  <cim:Unit rdf:ID="UNIT-MVAR"><cim:IdentifiedObject.name>MVAr</cim:IdentifiedObject.name></cim:Unit>
+  <cim:Analog rdf:ID="ME-I-1">
+    <cim:Measurement.MemberOf_PSR rdf:resource="#DEV-LINE-1"/>
+    <cim:Measurement.MeasurementType rdf:resource="#MT-I"/>
+    <cim:Measurement.Unit rdf:resource="#UNIT-A"/>
+  </cim:Analog>
+  <cim:Analog rdf:ID="ME-V-1">
+    <cim:Measurement.MemberOf_PSR rdf:resource="#DEV-LINE-1"/>
+    <cim:Measurement.MeasurementType rdf:resource="#MT-V"/>
+    <cim:Measurement.Unit rdf:resource="#UNIT-KV"/>
+  </cim:Analog>
+  <cim:Analog rdf:ID="ME-P-1">
+    <cim:Measurement.MemberOf_PSR rdf:resource="#DEV-LINE-1"/>
+    <cim:Measurement.MeasurementType rdf:resource="#MT-P"/>
+    <cim:Measurement.Unit rdf:resource="#UNIT-MW"/>
+  </cim:Analog>
+  <cim:Analog rdf:ID="ME-Q-1">
+    <cim:Measurement.MemberOf_PSR rdf:resource="#DEV-LINE-1"/>
+    <cim:Measurement.MeasurementType rdf:resource="#MT-Q"/>
+    <cim:Measurement.Unit rdf:resource="#UNIT-MVAR"/>
+  </cim:Analog>
+  <cim:Analog rdf:ID="ME-I-2">
+    <cim:Measurement.MemberOf_PSR rdf:resource="#DEV-LINE-2"/>
+    <cim:Measurement.MeasurementType rdf:resource="#MT-I"/>
+    <cim:Measurement.Unit rdf:resource="#UNIT-A"/>
+  </cim:Analog>
+  <cim:Analog rdf:ID="ME-V-2">
+    <cim:Measurement.MemberOf_PSR rdf:resource="#DEV-LINE-2"/>
+    <cim:Measurement.MeasurementType rdf:resource="#MT-V"/>
+    <cim:Measurement.Unit rdf:resource="#UNIT-KV"/>
+  </cim:Analog>
+  <cim:Analog rdf:ID="ME-P-2">
+    <cim:Measurement.MemberOf_PSR rdf:resource="#DEV-LINE-2"/>
+    <cim:Measurement.MeasurementType rdf:resource="#MT-P"/>
+    <cim:Measurement.Unit rdf:resource="#UNIT-MW"/>
+  </cim:Analog>
+  <cim:Analog rdf:ID="ME-Q-2">
+    <cim:Measurement.MemberOf_PSR rdf:resource="#DEV-LINE-2"/>
+    <cim:Measurement.MeasurementType rdf:resource="#MT-Q"/>
+    <cim:Measurement.Unit rdf:resource="#UNIT-MVAR"/>
+  </cim:Analog>
+</rdf:RDF>

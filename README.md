@@ -23,10 +23,30 @@
 
 详细技术文档：
 
+- [数据与模型接口交接说明](docs/数据与模型接口交接说明.md)
+- [Docker 部署与使用说明](docs/docker_deployment_guide.md)
+- [分级评估、风险分与画像的区别](docs/assessment_risk_profile_comparison.md)
+- [API 服务本机验证报告](docs/api_service_validation_report.md)
 - [DAMD-Net 设备自适应多判别器网络](docs/device_personalized_multi_discriminator.md)
 - [HSF-Net 站点分层多视角状态融合网络](docs/station_hierarchical_fusion_model.md)
 - [RA-MOD 风险约束多目标经济调度模型](docs/risk_aware_economic_dispatch_model.md)
 - [设备模型 real 数据验证报告](docs/device_model_real_data_validation_report.md)
+
+## 系统接口与部署
+
+模型能力已通过 FastAPI 封装为 REST API，并提供 Docker 统一运行环境。`model-api` 与 `data-worker` 使用同一镜像、不同进程：FastAPI 负责参数校验、任务创建和已训练模型推理，Worker 异步完成 XML/DT 解析、DB 业务数据读取、日级特征加工和原子发布。当前任务状态使用 SQLite，特征使用 Docker 共享卷中的版本化 CSV；生产 DB 类型确定后通过已保留的 SQLAlchemy 配置对接。
+
+家族缺陷预警通过 `GET /api/defect/family-alerts` 提供，按“厂家 + 型号 + 批次”三元组返回可定位的高危家族、缺陷设备占比、预警等级和家族内高风险设备。批次优先读取台账中的真实批次字段；字段缺失时可由出厂日期推导，并在返回值中明确标记来源。
+
+RA-MOD 当前使用一套基础经济场景，可以直接完成线性优化；调用方可通过接口覆盖供电预算、负荷增长、容量系数、调节成本、风险成本和缺额损失参数。详细接口、异步处理和 Docker 使用方式见[数据与模型接口交接说明](docs/数据与模型接口交接说明.md)。
+
+本机 CPU Docker 一键演示：
+
+```bash
+bash api_service/scripts/docker_demo.sh
+```
+
+当前已实际构建并验证 Apple Silicon CPU 镜像与 Linux `x86_64` / CUDA 12.8 GPU 镜像。详细启动、停止、日志、GPU 编号和离线镜像交付命令见 [Docker 部署与使用说明](docs/docker_deployment_guide.md)。
 
 ## 目录结构
 
@@ -34,9 +54,19 @@
 griddx/
 ├── README.md                         # 项目首页文档，说明安装、运行、模型和结果
 ├── .gitignore                        # Git 忽略规则，排除 data/、outputs/、缓存等本地文件
+├── .dockerignore                     # Docker 构建忽略规则，不向镜像发送原始数据
 ├── configs/                          # 环境配置文件
 │   ├── environment-macos.yml         # macOS / Apple Silicon 环境
 │   └── environment-linux-cu128.yml   # Linux / CUDA 环境，适合 3090 服务器
+├── api_service/                      # FastAPI、异步 Worker、Docker 和联调样例
+│   ├── app/                         # API 路由、模型服务、任务库和版本数据库
+│   ├── pipeline/                    # XML/DT/DB 数据清洗流程
+│   ├── worker.py                    # 独立异步数据 Worker
+│   ├── models/                      # 部署用已训练模型和校验值
+│   ├── demo/                        # 可执行联调报文与 XML/DT 演示批次
+│   ├── Dockerfile                   # Python 3.11 + 可选 CPU/cu128 PyTorch 镜像
+│   ├── compose.yaml                 # CPU API 与 Worker 双进程编排
+│   └── compose.gpu.yaml             # Linux 3090 GPU 叠加配置
 ├── data/                             # 本地数据目录，不上传 Git
 │   ├── model_base_device_day.csv
 │   ├── model_base_device_day_line_or_load_like.csv
@@ -47,10 +77,14 @@ griddx/
 ├── docs/                             # 更详细的建模说明文档
 │   ├── baseline_modeling_report.md
 │   ├── enriched_modeling_report.md   # 新数据分析、改进方案和结果边界
+│   ├── 数据与模型接口交接说明.md        # 数据、API 与部署交接文档
 │   ├── device_personalized_multi_discriminator.md # DAMD-Net 设备模型
 │   ├── station_hierarchical_fusion_model.md        # HSF-Net 站点模型
 │   ├── risk_aware_economic_dispatch_model.md       # RA-MOD 经济模型
-│   └── device_model_real_data_validation_report.md # real 数据验证报告
+│   ├── device_model_real_data_validation_report.md # real 数据验证报告
+│   ├── assessment_risk_profile_comparison.md       # 分级、风险分与画像区别
+│   ├── api_service_validation_report.md            # API 与 Docker 服务实跑报告
+│   └── docker_deployment_guide.md                  # Docker 启动、GPU 与离线交付说明
 ├── examples/                         # 示例脚本和早期环境验证脚本
 │   ├── grid_fault_demo.py
 │   └── test.py
@@ -328,7 +362,7 @@ outputs/baseline_models/economic_dispatch/dispatch_plan.csv
 outputs/baseline_models/economic_dispatch/dispatch_summary.json
 ```
 
-当前 77 个站点实验中，增量预算为 258.238 MW，总增量需求为 673.135 MW，求解器状态为 `optimal`。这些数值仍基于代理经济参数，等待经济调研数据替换。
+当前 77 个站点实验中，增量预算为 258.238 MW，总增量需求为 673.135 MW，求解器状态为 `optimal`。这些结果使用基础硬编码经济场景生成；经济调研数据可通过 API 参数或 B10 数据表覆盖默认值，不需要修改线性规划结构。
 
 ## 后续开发建议
 

@@ -1,0 +1,15 @@
+<system>
+@	Time
+#	2026-02-03 00:00:00
+</system>
+<AnalogValue>
+@	ID	Value
+#	ME-I-1	108
+#	ME-V-1	109.9
+#	ME-P-1	27.0
+#	ME-Q-1	5.4
+#	ME-I-2	126
+#	ME-V-2	109.6
+#	ME-P-2	31.0
+#	ME-Q-2	6.2
+</AnalogValue>
