@@ -6,6 +6,8 @@
 
 完整的数据检查、弱监督标签公式、分组评估方式和最新实验结果见 [enriched_modeling_report.md](enriched_modeling_report.md)。
 
+实验设置、关键模块消融与风险排序结果见 [experimental_results.md](experimental_results.md)。实验按对象划分训练、验证和测试集，以 3 个训练种子评价 DAMD-Net 与 HSF-Net，并给出训练曲线、关键模块对照、风险覆盖率、连续评分及对象权重等 11 组图。
+
 ## 建模链路
 
 ```text

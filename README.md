@@ -23,6 +23,7 @@
 
 详细技术文档：
 
+- [实验结果：实验设置、关键模块消融与风险排序](docs/experimental_results.md)
 - [数据与模型接口交接说明](docs/数据与模型接口交接说明.md)
 - [Docker 部署与使用说明](docs/docker_deployment_guide.md)
 - [分级评估、风险分与画像的区别](docs/assessment_risk_profile_comparison.md)
@@ -332,6 +333,17 @@ python scripts/run_baseline_pipeline.py \
 设备测试集包含 1,433 个未参与训练的设备，站点测试集包含 20 个未参与训练的站点。普通 MLP 的 Macro-F1 最高，多判别器的高风险召回更高，并为全部 5,729 台设备输出独立专家画像。结果位于 `outputs/baseline_models/device_prediction/device_expert_profiles.csv`。
 
 这些指标衡量的是模型复现弱监督风险规则的能力，不是未来缺陷或跳闸的业务命中率。
+
+### 实验结果
+
+设备与站点评估实验采用训练/验证/测试三份对象隔离分区，每种配置运行 3 个训练种子。[experimental_results.md](docs/experimental_results.md) 说明实验设置、DAMD-Net 残差与风险检出分析、HSF-Net 关键模块消融，以及风险优先排序结果，并提供 11 组 PNG/SVG 图。
+
+```bash
+python scripts/run_paper_experiments.py --torch-device cpu --seeds 42 43 44
+python scripts/summarize_paper_experiments.py
+```
+
+实验读取既有 `outputs/baseline_models/` 中的训练特征表，输出独立保存到 `outputs/paper_experiments/`；不会替换部署用模型。Linux GPU 实验可使用 `--torch-device cuda --gpu-id 0`。
 
 ## RA-MOD 经济调度模型
 
