@@ -12,6 +12,7 @@ from .labels import has_station_enriched_fields, make_station_cold_start_labels,
 from .model_zoo import save_metrics_summary, train_sklearn_models, train_torch_mlp
 from .paths import data_path, ensure_output_dir
 from .station_fusion import train_station_hierarchical_fusion
+from .training_data import prepare_training_table
 
 
 def build_station_training_table(
@@ -19,24 +20,25 @@ def build_station_training_table(
     max_rows: int,
     target_col: str | None = None,
     label_mode: str = "auto",
+    split_strategy: str = "group",
+    reference_path: Path | None = None,
 ) -> pd.DataFrame:
     df = read_csv_limited(csv_path, max_rows=max_rows)
-    features = build_station_features(df)
     mode = label_mode.lower()
     if target_col:
-        if target_col not in features.columns:
-            raise ValueError(f"Target column not found: {target_col}")
-        features["state_label"] = features[target_col].astype(int)
-        features["label_source"] = f"target:{target_col}"
-        if "state_score" not in features.columns:
-            features["state_score"] = features["state_label"] * 25.0
-    elif mode in {"auto", "enriched_weak"} and has_station_enriched_fields(features):
-        features = make_station_enriched_weak_labels(features)
+        label_builder = make_station_enriched_weak_labels
+    elif mode in {"auto", "enriched_weak"} and has_station_enriched_fields(df):
+        label_builder = make_station_enriched_weak_labels
     elif mode in {"auto", "cold_start"}:
-        features = make_station_cold_start_labels(features)
-        features["label_source"] = "cold_start_rule"
+        label_builder = make_station_cold_start_labels
     else:
         raise ValueError("label_mode=enriched_weak requires the enriched history columns.")
+    features = prepare_training_table(
+        df, build_station_features, label_builder, target_col, split_strategy,
+        "station_id", reference_path,
+    )
+    if not target_col and label_builder is make_station_cold_start_labels:
+        features["label_source"] = "cold_start_rule"
     return features
 
 
@@ -60,12 +62,14 @@ def run_station_training(
         max_rows=max_rows,
         target_col=target_col,
         label_mode=label_mode,
+        split_strategy=split_strategy,
+        reference_path=output_dir / "training_reference.joblib",
     )
     table.to_parquet(output_dir / "station_training_features.parquet", index=False)
     preview_cols = [col for col in ["date", "station_id", "station_name", "state_score", "state_label"] if col in table.columns]
     table[preview_cols].to_csv(output_dir / "station_state_preview.csv", index=False)
 
-    numeric, categorical = modeling_columns(table, "state_label")
+    numeric, categorical = modeling_columns(table.loc[table["__split_partition"] == "train"], "state_label")
     results = train_sklearn_models(
         table,
         "state_label",

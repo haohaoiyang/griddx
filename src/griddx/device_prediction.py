@@ -16,6 +16,7 @@ from .model_zoo import (
     train_torch_multi_discriminator,
 )
 from .paths import data_path, ensure_output_dir
+from .training_data import prepare_training_table
 
 
 def build_device_training_table(
@@ -24,26 +25,27 @@ def build_device_training_table(
     group: str | None = None,
     target_col: str | None = None,
     label_mode: str = "auto",
+    split_strategy: str = "group",
+    reference_path: Path | None = None,
 ) -> pd.DataFrame:
     df = read_csv_limited(csv_path, max_rows=max_rows)
     if group and group != "all" and "suggested_model_group" in df.columns:
         df = df[df["suggested_model_group"] == group].copy()
-    features = build_device_features(df)
     mode = label_mode.lower()
     if target_col:
-        if target_col not in features.columns:
-            raise ValueError(f"Target column not found: {target_col}")
-        features["state_label"] = features[target_col].astype(int)
-        features["label_source"] = f"target:{target_col}"
-        if "state_score" not in features.columns:
-            features["state_score"] = features["state_label"] * 25.0
-    elif mode in {"auto", "enriched_weak"} and has_device_enriched_fields(features):
-        features = make_device_enriched_weak_labels(features)
+        label_builder = make_device_enriched_weak_labels
+    elif mode in {"auto", "enriched_weak"} and has_device_enriched_fields(df):
+        label_builder = make_device_enriched_weak_labels
     elif mode in {"auto", "cold_start"}:
-        features = make_device_cold_start_labels(features)
-        features["label_source"] = "cold_start_rule"
+        label_builder = make_device_cold_start_labels
     else:
         raise ValueError("label_mode=enriched_weak requires the enriched history and maintenance columns.")
+    features = prepare_training_table(
+        df, build_device_features, label_builder, target_col, split_strategy,
+        "unified_device_id", reference_path,
+    )
+    if not target_col and label_builder is make_device_cold_start_labels:
+        features["label_source"] = "cold_start_rule"
     return features
 
 
@@ -69,6 +71,8 @@ def run_device_training(
         group=group,
         target_col=target_col,
         label_mode=label_mode,
+        split_strategy=split_strategy,
+        reference_path=output_dir / "training_reference.joblib",
     )
     table.to_parquet(output_dir / "device_training_features.parquet", index=False)
     preview_cols = [
@@ -78,7 +82,7 @@ def run_device_training(
     ]
     table[preview_cols].head(5000).to_csv(output_dir / "device_label_preview.csv", index=False)
 
-    numeric, categorical = modeling_columns(table, "state_label")
+    numeric, categorical = modeling_columns(table.loc[table["__split_partition"] == "train"], "state_label")
     results = train_sklearn_models(
         table,
         "state_label",

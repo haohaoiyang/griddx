@@ -20,7 +20,7 @@ from sklearn.metrics import (
 from .data import read_csv_limited
 from .evaluation import STATE_NAMES
 from .features import build_device_features
-from .labels import DEVICE_ENRICHED_COLUMNS, make_device_enriched_weak_labels
+from .labels import DEVICE_ENRICHED_COLUMNS, RankReference, make_device_enriched_weak_labels
 from .model_zoo import DeviceAdaptiveMultiDiscriminator, SimpleMLP, describe_torch_device, resolve_torch_device
 
 
@@ -89,7 +89,7 @@ def psi_level(psi: float) -> str:
     return "major_drift"
 
 
-def build_proxy_reference_labels(features: pd.DataFrame) -> tuple[pd.Series, pd.Series, dict[str, Any]]:
+def build_proxy_reference_labels(features: pd.DataFrame, reference: RankReference | None = None) -> tuple[pd.Series, pd.Series, dict[str, Any]]:
     """Build weak-rule reference labels only for rows with a complete risk profile."""
     missing_columns = [col for col in PROXY_LABEL_REQUIRED_COLUMNS if col not in features.columns]
     labels = pd.Series(np.nan, index=features.index, dtype="float64")
@@ -103,7 +103,8 @@ def build_proxy_reference_labels(features: pd.DataFrame) -> tuple[pd.Series, pd.
 
     eligible = features[PROXY_LABEL_REQUIRED_COLUMNS].notna().all(axis=1)
     if eligible.any():
-        weak_labels = make_device_enriched_weak_labels(features.loc[eligible].copy())
+        frozen = RankReference(reference.distributions) if reference is not None else None
+        weak_labels = make_device_enriched_weak_labels(features.loc[eligible].copy(), reference=frozen)
         labels.loc[eligible] = weak_labels["state_label"].astype(float)
     return labels, eligible, {
         "label_source": "proxy_enriched_weak_rule",
@@ -115,9 +116,9 @@ def build_proxy_reference_labels(features: pd.DataFrame) -> tuple[pd.Series, pd.
     }
 
 
-def resolve_validation_labels(features: pd.DataFrame, target_col: str | None) -> tuple[pd.Series, pd.Series, dict[str, Any]]:
+def resolve_validation_labels(features: pd.DataFrame, target_col: str | None, reference: RankReference | None = None) -> tuple[pd.Series, pd.Series, dict[str, Any]]:
     if not target_col:
-        return build_proxy_reference_labels(features)
+        return build_proxy_reference_labels(features, reference)
     if target_col not in features.columns:
         raise ValueError(f"Target column not found in validation data: {target_col}")
 
@@ -524,12 +525,17 @@ def run_external_device_validation(
         raise ValueError("batch_size must be positive.")
     output_dir.mkdir(parents=True, exist_ok=True)
     raw = read_csv_limited(csv_path, max_rows=max_rows)
-    features = build_device_features(raw)
+    reference_path = model_dir / "training_reference.joblib"
+    reference = joblib.load(reference_path) if reference_path.exists() else {}
+    features = build_device_features(raw, reference_data=reference.get("feature_reference"))
     preprocessor, numeric_features, categorical_features, schema_model = load_validation_schema(model_dir)
     model_features = numeric_features + categorical_features
+    if target_col and target_col in model_features:
+        raise ValueError("Validation target is present in the saved model input schema; retrain the model.")
     missing_model_features = [column for column in model_features if column not in features.columns]
 
-    labels, label_mask, label_metadata = resolve_validation_labels(features, target_col)
+    rank_reference = reference.get("rank_reference") if reference.get("label_builder") == "make_device_enriched_weak_labels" else None
+    labels, label_mask, label_metadata = resolve_validation_labels(features, target_col, rank_reference)
     profile_path = model_dir / "device_expert_profiles.csv"
     scope_mask, scope_metadata, train_device_ids = resolve_device_scope(
         features, profile_path, partition=device_partition

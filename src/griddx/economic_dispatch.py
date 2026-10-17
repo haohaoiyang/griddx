@@ -40,7 +40,7 @@ def prepare_dispatch_table(station_csv: Path, date: str | None = None) -> pd.Dat
         features = make_station_cold_start_labels(features)
 
     active = features.get("active_power_3phase_sum", pd.Series(0.0, index=features.index)).abs().fillna(0)
-    historical = df.copy()
+    historical = df.loc[df["date"] <= selected_date].copy()
     historical["active_abs"] = historical["active_power_3phase_sum"].abs()
     p95 = historical.groupby("station_id")["active_abs"].quantile(0.95)
     features["current_load_mw_proxy"] = active

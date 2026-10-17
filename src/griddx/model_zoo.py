@@ -42,11 +42,30 @@ def make_train_test_indices(
     indices = np.arange(len(df))
     y = df[target_col].astype(int).to_numpy()
     strategy = split_strategy.lower()
+    prepared = df.attrs.get("training_split")
+    if prepared is not None:
+        requested = {"split_strategy": strategy, "test_size": test_size, "random_state": random_state,
+                     "group_col": group_col, "date_col": date_col}
+        if any(prepared.get(key) != value for key, value in requested.items()):
+            raise ValueError("Requested split differs from the prepared training table.")
+        if "__split_partition" not in df or not df["__split_partition"].isin(["train", "test"]).all():
+            raise ValueError("Prepared training table has invalid partitions.")
+        train_idx = indices[df["__split_partition"].eq("train").to_numpy()]
+        test_idx = indices[df["__split_partition"].eq("test").to_numpy()]
+        if not len(train_idx) or not len(test_idx):
+            raise ValueError("Training and test partitions must both be nonempty.")
+        metadata = {key: value for key, value in prepared.items()
+                    if key not in {"test_size", "random_state", "group_col", "date_col"}}
+        return train_idx, test_idx, metadata
 
     if strategy == "group":
         if not group_col or group_col not in df.columns:
             raise ValueError("group split requires an existing group_col.")
-        groups = df[group_col].astype("string").fillna(pd.Series(indices, index=df.index).astype(str)).to_numpy()
+        group_values = df[group_col].astype("string")
+        missing_group = "__missing_entity__"
+        while group_values.eq(missing_group).any():
+            missing_group += "_"
+        groups = group_values.fillna(missing_group).to_numpy()
         splitter = GroupShuffleSplit(n_splits=1, test_size=test_size, random_state=random_state)
         train_idx, test_idx = next(splitter.split(indices, y, groups))
         metadata: dict[str, Any] = {
@@ -59,6 +78,8 @@ def make_train_test_indices(
         if date_col not in df.columns:
             raise ValueError(f"temporal split requires date column: {date_col}")
         dates = pd.to_datetime(df[date_col], errors="coerce")
+        if dates.isna().any():
+            raise ValueError("temporal split requires valid dates for every row.")
         unique_dates = np.array(sorted(dates.dropna().unique()))
         if len(unique_dates) < 2:
             raise ValueError("temporal split requires at least two distinct valid dates.")

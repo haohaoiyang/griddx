@@ -56,12 +56,12 @@ def _existing(df: pd.DataFrame, columns: list[str]) -> list[str]:
     return [col for col in columns if col in df.columns]
 
 
-def add_calendar_features(df: pd.DataFrame) -> pd.DataFrame:
+def add_calendar_features(df: pd.DataFrame, reference_data: pd.DataFrame | None = None) -> pd.DataFrame:
     df = parse_date_column(df)
     if "date" not in df.columns:
         return df
     out = df.copy()
-    min_date = out["date"].min()
+    min_date = out["date"].min() if reference_data is None else pd.to_datetime(reference_data["date"]).min()
     out["day_index"] = (out["date"] - min_date).dt.days.astype("float32")
     out["day_of_week"] = out["date"].dt.dayofweek.astype("float32")
     out["month"] = out["date"].dt.month.astype("float32")
@@ -109,16 +109,24 @@ def add_device_temporal_features(df: pd.DataFrame, windows: tuple[int, ...] = (7
     return out
 
 
-def add_station_peer_features(df: pd.DataFrame) -> pd.DataFrame:
+def add_station_peer_features(df: pd.DataFrame, reference_data: pd.DataFrame | None = None) -> pd.DataFrame:
     required = {"date", "station_id", "suggested_model_group"}
     if not required.issubset(df.columns):
         return df
     out = df.copy()
     value_cols = _existing(out, ["current_3phase", "voltage", "active_power_3phase", "reactive_power_3phase"])
     peer_key = ["date", "station_id", "suggested_model_group"]
+    reference = out if reference_data is None else parse_date_column(reference_data)
+    if not set(peer_key).issubset(reference.columns):
+        raise ValueError("Peer reference is missing grouping columns.")
     for col in value_cols:
-        peer_mean = out.groupby(peer_key, observed=True)[col].transform("mean")
-        peer_std = out.groupby(peer_key, observed=True)[col].transform("std")
+        if col not in reference.columns:
+            out[f"{col}_peer_z"] = np.nan
+            continue
+        statistics = reference.groupby(peer_key, observed=True)[col].agg(["mean", "std"])
+        keys = pd.MultiIndex.from_frame(out[peer_key])
+        peer_mean = pd.Series(statistics["mean"].reindex(keys).to_numpy(), index=out.index)
+        peer_std = pd.Series(statistics["std"].reindex(keys).to_numpy(), index=out.index)
         out[f"{col}_peer_z"] = (out[col] - peer_mean) / peer_std.replace(0, np.nan)
     return out
 
@@ -177,19 +185,19 @@ def add_enriched_station_features(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def build_device_features(df: pd.DataFrame) -> pd.DataFrame:
+def build_device_features(df: pd.DataFrame, reference_data: pd.DataFrame | None = None) -> pd.DataFrame:
     out = drop_empty_columns(df)
-    out = add_calendar_features(out)
+    out = add_calendar_features(out, reference_data)
     out = add_physical_features(out)
     out = add_device_temporal_features(out)
-    out = add_station_peer_features(out)
+    out = add_station_peer_features(out, reference_data)
     out = add_enriched_device_features(out)
     return out
 
 
-def build_station_features(df: pd.DataFrame) -> pd.DataFrame:
+def build_station_features(df: pd.DataFrame, reference_data: pd.DataFrame | None = None) -> pd.DataFrame:
     out = drop_empty_columns(df)
-    out = add_calendar_features(out)
+    out = add_calendar_features(out, reference_data)
     if {"voltage_max", "voltage_min"}.issubset(out.columns):
         out["voltage_spread"] = out["voltage_max"] - out["voltage_min"]
     if {"current_3phase_max", "current_3phase_mean"}.issubset(out.columns):
@@ -211,7 +219,8 @@ def build_station_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def modeling_columns(df: pd.DataFrame, target_col: str, extra_exclude: set[str] | None = None) -> tuple[list[str], list[str]]:
-    exclude = set(ID_COLUMNS) | {target_col, "state_score", "state_label", "risk_score", "risk_level"}
+    exclude = set(ID_COLUMNS) | {target_col, "state_score", "state_label", "risk_score", "risk_level", "__split_partition"}
+    exclude |= set(df.attrs.get("target_columns", []))
     if extra_exclude:
         exclude |= extra_exclude
     categorical = [
